@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AMONG US - Canvas Edition</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background-color: #030712;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: none; color: #fff;
+    }
+    #gameCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+
+    /* Home & Lobby Screens */
+    .screen-overlay {
+      position: absolute; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(circle at center, #0f172a 0%, #030712 100%);
+      padding: 20px; transition: opacity 0.3s ease;
+    }
+    .screen-overlay.hidden { display: none !important; }
+
+    .home-title {
+      font-size: clamp(38px, 8vw, 68px); font-weight: 900; letter-spacing: 6px;
+      color: #f8fafc; text-shadow: 0 0 25px rgba(56, 189, 248, 0.6);
+      margin-bottom: 24px; text-transform: uppercase; text-align: center;
+    }
+    .menu-panel {
+      background: rgba(17, 24, 39, 0.9); border: 3px solid #374151; border-radius: 20px;
+      padding: 26px 22px; width: 100%; max-width: 420px; display: flex; flex-direction: column;
+      gap: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px);
+    }
+    .input-field {
+      width: 100%; padding: 14px 18px; border-radius: 12px; background: #1f2937;
+      border: 2px solid #4b5563; color: #fff; font-size: 18px; font-weight: bold;
+      outline: none; text-align: center; text-transform: uppercase; letter-spacing: 2px;
+    }
+    .input-field:focus { border-color: #38bdf8; box-shadow: 0 0 12px rgba(56, 189, 248, 0.4); }
+
+    .btn {
+      width: 100%; padding: 15px; font-size: 16px; font-weight: 800; letter-spacing: 1px;
+      border: none; border-radius: 12px; cursor: pointer; color: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.08s ease;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-sp { background: linear-gradient(135deg, #10b981, #059669); border: 2px solid #34d399; }
+    .btn-host { background: linear-gradient(135deg, #2563eb, #1d4ed8); border: 2px solid #60a5fa; }
+    .btn-join { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: 2px solid #a78bfa; }
+    .btn-danger { background: linear-gradient(135deg, #ef4444, #b91c1c); border: 2px solid #f87171; }
+    .btn-secondary { background: #374151; border: 2px solid #6b7280; }
+
+    .room-code-badge {
+      font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #38bdf8;
+      background: #0f172a; padding: 14px; border-radius: 12px; border: 2px dashed #0284c7;
+      text-align: center; margin: 10px 0;
+    }
+
+    /* Mobile Controls */
+    .touch-ui { position: absolute; inset: 0; pointer-events: none; z-index: 25; }
+    .action-btn {
+      position: absolute; width: 76px; height: 76px; border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.85); font-weight: 900; font-size: 13px;
+      color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: auto; cursor: pointer; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+      transition: transform 0.08s ease;
+    }
+    .action-btn:active { transform: scale(0.92); }
+    .action-btn.disabled { filter: grayscale(1) opacity(0.35); pointer-events: none; }
+    #btn-kill { bottom: 28px; right: 28px; background: radial-gradient(circle, #ff2a2a, #8b0000); border-color: #ff8585; display: none; }
+    #btn-use { bottom: 28px; right: 120px; background: radial-gradient(circle, #3b82f6, #1e3a8a); border-color: #93c5fd; }
+    #btn-report { bottom: 122px; right: 38px; background: radial-gradient(circle, #f59e0b, #b45309); border-color: #fde68a; }
+    #kill-cooldown-svg { position: absolute; inset: -3px; width: 82px; height: 82px; transform: rotate(-90deg); pointer-events: none; }
+    #kill-cooldown-circle { fill: none; stroke: rgba(255, 255, 255, 0.95); stroke-width: 5; stroke-dasharray: 242; stroke-dashoffset: 0; }
+
+    /* Modals */
+    .overlay-modal {
+      position: absolute; inset: 0; background: rgba(4, 7, 16, 0.88); backdrop-filter: blur(8px);
+      display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+    }
+    .modal-box {
+      background: #111827; border: 3px solid #374151; border-radius: 16px; width: 100%; max-width: 560px;
+      color: #fff; padding: 22px; box-shadow: 0 20px 45px rgba(0,0,0,0.85); position: relative;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #1f2937; padding-bottom: 8px; }
+    .close-btn { background: #ef4444; border: none; color: #fff; font-weight: bold; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; }
+    .wires-board { display: flex; justify-content: space-between; height: 220px; position: relative; margin: 16px 0; }
+    .wire-col { display: flex; flex-direction: column; justify-content: space-around; z-index: 2; }
+    .wire-terminal { width: 38px; height: 38px; border-radius: 8px; border: 3px solid #fff; cursor: pointer; }
+    #wires-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+    .progress-bar-bg { width: 100%; height: 28px; background: #1f2937; border-radius: 14px; overflow: hidden; border: 2px solid #4b5563; margin: 16px 0; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #34d399); }
+    .meeting-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 16px 0; }
+    .vote-card { background: #1f2937; border: 2px solid #374151; border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .vote-card.dead { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HOME SCREEN -->
+  <div id="screen-home" class="screen-overlay">
+    <div class="home-title">AMONG US</div>
+    <div class="menu-panel">
+      <input type="text" id="player-nickname" class="input-field" placeholder="ENTER NICKNAME" maxlength="10" value="CREWMATE" />
+      <button class="btn btn-sp" onclick="App.startSinglePlayer()">SINGLE PLAYER</button>
+      <button class="btn btn-host" onclick="App.showScreen('screen-host')">CREATE ROOM</button>
+      <button class="btn btn-join" onclick="App.showScreen('screen-join')">ENTER CODE</button>
+    </div>
+  </div>
+
+  <!-- HOST ROOM SCREEN -->
+  <div id="screen-host" class="screen-overlay hidden">
+    <div class="home-title" style="font-size: 34px;">ROOM CREATED</div>
+    <div class="menu-panel">
+      <p style="font-size: 13px; color: #94a3b8; text-align: center;">SHARE THIS 4-LETTER CODE:</p>
+      <div id="host-code-display" class="room-code-badge">....</div>
+      <button class="btn btn-secondary" onclick="App.copyInviteLink()">COPY INVITE LINK</button>
+      <p id="host-status" style="font-size: 13px; color: #fbbf24; text-align: center; margin-top: 6px;">Waiting for player to join...</p>
+      <button class="btn btn-danger" onclick="App.showScreen('screen-home')">CANCEL</button>
+    </div>
+  </div>
+
+  <!-- JOIN ROOM SCREEN -->
+  <div id="screen-join" class="screen-overlay hidden">
+    <div class="home-title" style="font-size: 34px;">JOIN ROOM</div>
+    <div class="menu-panel">
+      <input type="text" id="join-code-input" class="input-field" placeholder="ROOM CODE (E.G. A4F9)" maxlength="4" />
+      <button class="btn btn-join" onclick="App.joinWithCode()">CONNECT</button>
+      <button class="btn btn-danger" onclick="App.showScreen('screen-home')">BACK</button>
+    </div>
+  </div>
+
+  <!-- WAITING LOBBY -->
+  <div id="screen-lobby" class="screen-overlay hidden">
+    <div class="home-title" style="font-size: 32px;">SHIP LOBBY</div>
+    <div class="menu-panel">
+      <div id="lobby-status" style="text-align: center; color: #34d399; font-weight: bold;">CREW CONNECTED</div>
+      <div style="background:#1f2937; padding:12px; border-radius:10px; margin: 10px 0; border: 2px solid #374151;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Player 1 (Host)</span><strong style="color:#10b981;">READY</strong></div>
+        <div style="display:flex; justify-content:space-between;"><span>Player 2 (Crew)</span><strong style="color:#10b981;">READY</strong></div>
+      </div>
+      <button class="btn btn-sp" id="btn-start-multi" onclick="App.launchMultiplayerGame()">START GAME</button>
+      <button class="btn btn-danger" onclick="window.location.reload()">LEAVE</button>
+    </div>
+  </div>
+
+  <!-- TOUCH BUTTONS -->
+  <div class="touch-ui" id="touchControls" style="display: none;">
+    <div id="btn-use" class="action-btn disabled">USE</div>
+    <div id="btn-report" class="action-btn disabled">REPORT</div>
+    <div id="btn-kill" class="action-btn">
+      <svg id="kill-cooldown-svg" viewBox="0 0 82 82"><circle id="kill-cooldown-circle" cx="41" cy="41" r="38.5"></circle></svg>
+      KILL
+    </div>
+  </div>
+
+  <!-- MINIGAMES & MEETING MODALS -->
+  <div class="overlay-modal" id="modal-wires">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 style="color: #60a5fa;">Fix Electrical Wires</h3>
+        <button class="close-btn" onclick="Game.closeMiniGame()">✕</button>
+      </div>
+      <div class="wires-board" id="wires-container">
+        <canvas id="wires-canvas"></canvas>
+        <div class="wire-col" id="wires-left"></div>
+        <div class="wire-col" id="wires-right"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay-modal" id="modal-download">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 style="color: #34d399;">Data Transfer</h3>
+        <button class="close-btn" onclick="Game.closeMiniGame()">✕</button>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="download-progress"></div></div>
+      <p id="download-status" style="font-family: monospace; text-align: center; margin-bottom: 16px;">Speed: 0.00 KB/s</p>
+      <button class="btn btn-sp" id="btn-start-download" onclick="Game.startDownloadTask()">START TRANSFER</button>
+    </div>
+  </div>
+
+  <div class="overlay-modal" id="modal-meeting">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 style="color: #f87171; letter-spacing: 2px;">EMERGENCY MEETING</h2>
+        <div id="meeting-timer" style="font-weight: bold; font-size: 20px; color:#fbbf24;">15s</div>
+      </div>
+      <div class="meeting-grid" id="meeting-roster"></div>
+      <button class="btn btn-secondary" onclick="Game.castVote(null)">SKIP VOTE</button>
+    </div>
+  </div>
+
+  <div id="screen-splash" class="screen-overlay hidden" style="z-index: 200;">
+    <h1 id="splash-title" class="home-title" style="margin-bottom: 12px;">IMPOSTOR</h1>
+    <p id="splash-subtitle" style="font-size: 18px; color: #94a3b8; margin-bottom: 24px; text-align: center; max-width: 480px;"></p>
+    <button class="btn btn-sp" id="splash-btn" style="max-width: 260px;" onclick="Game.onSplashDismiss()">CONTINUE</button>
+  </div>
+    <script>
+    /* ==========================================================================
+       SYNTHESIZER SOUND ENGINE
+       ========================================================================== */
+    class AudioSynth {
+      constructor() { this.ctx = null; }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      playStep() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.05);
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.05);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.05);
+      }
+      playKill() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.35);
+      }
+      playAlarm() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(450, now);
+        osc.frequency.linearRampToValueAtTime(900, now + 0.25);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.25);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.25);
+      }
+      playSuccess() {
+        if (!this.ctx) return;
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const t = this.ctx.currentTime + i * 0.08;
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.08, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+          osc.connect(gain); gain.connect(this.ctx.destination);
+          osc.start(t); osc.stop(t + 0.18);
+        });
+      }
+    }
+    const Sound = new AudioSynth();
+
+    /* ==========================================================================
+       LIGHTWEIGHT 4-LETTER ROOM CODE NETWORK
+       ========================================================================== */
+    class EasyNetwork {
+      constructor() {
+        this.peer = null;
+        this.conn = null;
+        this.isHost = false;
+        this.roomCode = '';
+        this.PREFIX = 'au-canv-';
+      }
+
+      generateShortCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let res = '';
+        for (let i = 0; i < 4; i++) res += chars[Math.floor(Math.random() * chars.length)];
+        return res;
+      }
+
+      hostRoom(onReady) {
+        this.isHost = true;
+        this.roomCode = this.generateShortCode();
+        this.peer = new Peer(this.PREFIX + this.roomCode);
+
+        this.peer.on('open', () => onReady(this.roomCode));
+        this.peer.on('error', () => {
+          this.roomCode = this.generateShortCode();
+          this.hostRoom(onReady);
+        });
+
+        this.peer.on('connection', (c) => {
+          this.conn = c;
+          this.setupEvents();
+        });
+      }
+
+      joinRoom(code, onSuccess, onFail) {
+        this.isHost = false;
+        this.roomCode = code.toUpperCase().trim();
+        this.peer = new Peer();
+
+        this.peer.on('open', () => {
+          this.conn = this.peer.connect(this.PREFIX + this.roomCode);
+          this.setupEvents();
+          if (onSuccess) onSuccess();
+        });
+        this.peer.on('error', (err) => {
+          if (onFail) onFail(err);
+        });
+      }
+
+      setupEvents() {
+        this.conn.on('open', () => App.onConnected());
+        this.conn.on('data', (d) => Game.handleNetworkMessage(d));
+        this.conn.on('close', () => {
+          alert('Peer disconnected.');
+          window.location.reload();
+        });
+      }
+
+      broadcast(data) {
+        if (this.conn && this.conn.open) this.conn.send(data);
+      }
+    }
+    const Network = new EasyNetwork();
+          /* ==========================================================================
+       MAP & PROCEDURAL RENDERING
+       ========================================================================== */
+    const PLAYER_COLORS = [
+      { name: 'Red', hex: '#c51111', dark: '#7a0838' },
+      { name: 'Blue', hex: '#132ed1', dark: '#09158e' },
+      { name: 'Green', hex: '#117f2d', dark: '#0a4d1a' },
+      { name: 'Pink', hex: '#ed54ba', dark: '#ab2ca3' },
+      { name: 'Orange', hex: '#ef7d0d', dark: '#b04a02' },
+      { name: 'Yellow', hex: '#f5f557', dark: '#c2870c' },
+      { name: 'Cyan', hex: '#38fedc', dark: '#24a89c' }
+    ];
+
+    const ROOMS = [
+      { name: 'Cafeteria', x: 800, y: 150, w: 600, h: 420, color: '#1a2234' },
+      { name: 'MedBay', x: 250, y: 300, w: 450, h: 400, color: '#16232e' },
+      { name: 'Reactor', x: 200, y: 900, w: 500, h: 480, color: '#251b29' },
+      { name: 'Electrical', x: 900, y: 950, w: 550, h: 450, color: '#262216' },
+      { name: 'Storage', x: 1550, y: 550, w: 450, h: 550, color: '#1e242b' }
+    ];
+
+    const HALLWAYS = [
+      { x: 650, y: 360, w: 200, h: 100 },
+      { x: 1050, y: 520, w: 120, h: 480 },
+      { x: 420, y: 680, w: 120, h: 250 },
+      { x: 670, y: 1100, w: 260, h: 120 },
+      { x: 1380, y: 300, w: 220, h: 120 },
+      { x: 1420, y: 980, w: 160, h: 120 }
+    ];
+
+    const SOLID_WALLS = [
+      { x: 100, y: 80, w: 1980, h: 40 },
+      { x: 100, y: 1480, w: 1980, h: 40 },
+      { x: 100, y: 80, w: 40, h: 1440 },
+      { x: 2040, y: 80, w: 40, h: 1440 },
+      { x: 1020, y: 300, w: 160, h: 120 },
+      { x: 380, y: 440, w: 180, h: 70 },
+      { x: 410, y: 1080, w: 120, h: 160 },
+      { x: 1050, y: 1100, w: 200, h: 80 }
+    ];
+
+    class ProceduralGraphics {
+      static drawAstronaut(ctx, x, y, size, color, facingLeft, animOffset, isDead = false) {
+        ctx.save();
+        ctx.translate(x, y);
+        if (isDead) {
+          this.drawCorpse(ctx, size, color);
+          ctx.restore();
+          return;
+        }
+
+        if (facingLeft) ctx.scale(-1, 1);
+        const bob = Math.sin(animOffset * 10) * 2.2;
+        ctx.translate(0, bob);
+
+        ctx.lineWidth = 4; ctx.strokeStyle = '#05070a';
+
+        // Backpack
+        ctx.fillStyle = color.dark;
+        ctx.beginPath();
+        ctx.roundRect(-size * 0.72, -size * 0.35, size * 0.32, size * 0.7, [8]);
+        ctx.fill(); ctx.stroke();
+
+        // Legs
+        const leg = Math.sin(animOffset * 12) * (size * 0.2);
+        ctx.fillStyle = color.dark;
+        ctx.beginPath();
+        ctx.roundRect(-size * 0.28, size * 0.35 - leg, size * 0.24, size * 0.35 + leg, [4,4,8,8]);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = color.hex;
+        ctx.beginPath();
+        ctx.roundRect(size * 0.05, size * 0.35 + leg, size * 0.24, size * 0.35 - leg, [4,4,8,8]);
+        ctx.fill(); ctx.stroke();
+
+        // Body
+        ctx.fillStyle = color.hex;
+        ctx.beginPath();
+        ctx.ellipse(0, -size * 0.1, size * 0.44, size * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        // Visor
+        const vx = size * 0.14, vy = -size * 0.18, vw = size * 0.36, vh = size * 0.24;
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.roundRect(vx - 2, vy - 2, vw + 4, vh + 4, [10]);
+        ctx.fill(); ctx.stroke();
+
+        const grad = ctx.createLinearGradient(vx, vy, vx, vy + vh);
+        grad.addColorStop(0, '#a5f3fc');
+        grad.addColorStop(1, '#0284c7');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(vx, vy, vw, vh, [8]);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.beginPath();
+        ctx.ellipse(vx + vw * 0.45, vy + vh * 0.3, vw * 0.25, vh * 0.14, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      static drawCorpse(ctx, size, color) {
+        ctx.lineWidth = 4; ctx.strokeStyle = '#05070a';
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.roundRect(-4, -size * 0.45, 8, size * 0.4, [4]);
+        ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(-5, -size * 0.42, 6, 0, Math.PI * 2);
+        ctx.arc(5, -size * 0.42, 6, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = color.hex;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 0.42, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * 0.42, size * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+      }
+          /* ==========================================================================
+       ENGINE & LOCAL PHYSICS
+       ========================================================================== */
+    class GameEngine {
+      constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.state = 'MENU';
+        this.isMultiplayer = false;
+        this.dpr = window.devicePixelRatio || 1;
+        this.viewW = 0; this.viewH = 0;
+        this.camera = { x: 1000, y: 350 };
+        this.player = null;
+        this.remotePlayers = [];
+        this.bots = [];
+        this.corpses = [];
+        this.tasks = [];
+        this.killCooldown = 0;
+        this.tasksCompleted = 0;
+        this.tasksTotal = 8;
+        this.keys = {};
+        this.joystick = { active: false, id: null, sx: 0, sy: 0, vx: 0, vy: 0, rad: 55 };
+        this.lastStepTime = 0;
+
+        this.initCanvas();
+        this.initInput();
+        this.initTasks();
+      }
+
+      initCanvas() {
+        this.viewW = window.innerWidth; this.viewH = window.innerHeight;
+        this.canvas.width = Math.floor(this.viewW * this.dpr);
+        this.canvas.height = Math.floor(this.viewH * this.dpr);
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      }
+
+      initInput() {
+        window.addEventListener('resize', () => this.initCanvas());
+        window.addEventListener('keydown', (e) => {
+          this.keys[e.code] = true;
+          if (e.code === 'KeyE') this.onUse();
+          if (e.code === 'KeyQ') this.onKill();
+          if (e.code === 'KeyR') this.onReport();
+        });
+        window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+
+        window.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('.action-btn') || e.target.closest('.overlay-modal') || e.target.closest('.screen-overlay')) return;
+          if (e.clientX < this.viewW * 0.5 && !this.joystick.active) {
+            this.joystick.active = true;
+            this.joystick.id = e.pointerId;
+            this.joystick.sx = e.clientX; this.joystick.sy = e.clientY;
+            this.joystick.vx = 0; this.joystick.vy = 0;
+          }
+        });
+        window.addEventListener('pointermove', (e) => {
+          if (this.joystick.active && e.pointerId === this.joystick.id) {
+            const dx = e.clientX - this.joystick.sx;
+            const dy = e.clientY - this.joystick.sy;
+            const dist = Math.min(Math.hypot(dx, dy), this.joystick.rad);
+            const ang = Math.atan2(dy, dx);
+            this.joystick.vx = (Math.cos(ang) * dist) / this.joystick.rad;
+            this.joystick.vy = (Math.sin(ang) * dist) / this.joystick.rad;
+          }
+        });
+        const stopJoy = (e) => {
+          if (this.joystick.active && e.pointerId === this.joystick.id) {
+            this.joystick.active = false;
+            this.joystick.vx = 0; this.joystick.vy = 0;
+          }
+        };
+        window.addEventListener('pointerup', stopJoy);
+        window.addEventListener('pointercancel', stopJoy);
+
+        document.getElementById('btn-kill').onclick = () => this.onKill();
+        document.getElementById('btn-use').onclick = () => this.onUse();
+        document.getElementById('btn-report').onclick = () => this.onReport();
+      }
+
+      initTasks() {
+        this.tasks = [
+          { id: 'w1', type: 'wires', x: 970, y: 990, radius: 45, done: false },
+          { id: 'w2', type: 'wires', x: 1320, y: 200, radius: 45, done: false },
+          { id: 'd1', type: 'download', x: 860, y: 220, radius: 45, done: false },
+          { id: 'd2', type: 'download', x: 260, y: 960, radius: 45, done: false },
+          { id: 'w3', type: 'wires', x: 300, y: 360, radius: 45, done: false },
+          { id: 'd3', type: 'download', x: 1650, y: 620, radius: 45, done: false },
+          { id: 'w4', type: 'wires', x: 620, y: 1300, radius: 45, done: false },
+          { id: 'd4', type: 'download', x: 1380, y: 1340, radius: 45, done: false }
+        ];
+        this.tasksTotal = this.tasks.length;
+        this.tasksCompleted = 0;
+      }
+
+      startSinglePlayer(name) {
+        this.isMultiplayer = false;
+        const isImp = Math.random() < 0.4;
+        this.setupLocalPlayer(name, PLAYER_COLORS[0], isImp);
+
+        this.bots = [];
+        const wp = [{x:350, y:450}, {x:1100, y:1150}, {x:450, y:1150}, {x:1750, y:800}];
+        for (let i = 0; i < 4; i++) {
+          this.bots.push({
+            id: i + 1, name: 'Bot ' + PLAYER_COLORS[i+1].name, color: PLAYER_COLORS[i+1],
+            isImpostor: false, isDead: false, x: wp[i].x, y: wp[i].y, size: 32, speed: 2.6,
+            facingLeft: false, walkAnim: 0, target: this.getRandomMapPos()
+          });
+        }
+        this.showRoleSplash();
+      }
+
+      setupLocalPlayer(name, color, isImpostor) {
+        this.player = {
+          id: Math.floor(Math.random() * 10000),
+          name: name || 'CREWMATE',
+          color: color,
+          isImpostor: isImpostor,
+          isDead: false,
+          x: 1080, y: 260, size: 32, speed: 4.8,
+          facingLeft: false, walkAnim: 0
+        };
+        this.corpses = [];
+        this.killCooldown = 15;
+        document.getElementById('touchControls').style.display = 'block';
+        document.getElementById('btn-kill').style.display = isImpostor ? 'flex' : 'none';
+      }
+
+      showRoleSplash() {
+        this.state = 'SPLASH';
+        const s = document.getElementById('screen-splash');
+        const t = document.getElementById('splash-title');
+        const st = document.getElementById('splash-subtitle');
+        s.classList.remove('hidden');
+        if (this.player.isImpostor) {
+          t.textContent = 'IMPOSTOR'; t.style.color = '#ef4444';
+          st.textContent = 'Sabotage the ship and eliminate the crew.';
+        } else {
+          t.textContent = 'CREWMATE'; t.style.color = '#38bdf8';
+          st.textContent = 'Complete ship maintenance tasks or report the Impostor.';
+        }
+      }
+
+      onSplashDismiss() {
+        document.getElementById('screen-splash').classList.add('hidden');
+        this.state = 'PLAYING';
+      }
+
+      getRandomMapPos() {
+        const r = ROOMS[Math.floor(Math.random() * ROOMS.length)];
+        return { x: r.x + 60 + Math.random() * (r.w - 120), y: r.y + 60 + Math.random() * (r.h - 120) };
+      }
+
+      checkCollision(x, y, r = 18) {
+        if (x - r < 120 || x + r > 2020 || y - r < 100 || y + r > 1460) return true;
+        let walkable = false;
+        for (const rm of ROOMS) {
+          if (x >= rm.x && x <= rm.x + rm.w && y >= rm.y && y <= rm.y + rm.h) { walkable = true; break; }
+        }
+        if (!walkable) {
+          for (const hl of HALLWAYS) {
+            if (x >= hl.x && x <= hl.x + hl.w && y >= hl.y && y <= hl.y + hl.h) { walkable = true; break; }
+          }
+        }
+        if (!walkable) return true;
+        for (const w of SOLID_WALLS) {
+          if (x + r > w.x && x - r < w.x + w.w && y + r > w.y && y - r < w.y + w.h) return true;
+        }
+        return false;
+      }
+
+      updatePlayer(dt) {
+        if (this.player.isDead) return;
+        let ix = 0, iy = 0;
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) iy -= 1;
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) iy += 1;
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) ix -= 1;
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) ix += 1;
+
+        if (this.joystick.active) { ix = this.joystick.vx; iy = this.joystick.vy; }
+        const len = Math.hypot(ix, iy);
+
+        if (len > 0.05) {
+          const mx = (ix / (len > 1 ? len : 1)) * this.player.speed;
+          const my = (iy / (len > 1 ? len : 1)) * this.player.speed;
+          if (!this.checkCollision(this.player.x + mx, this.player.y)) this.player.x += mx;
+          if (!this.checkCollision(this.player.x, this.player.y + my)) this.player.y += my;
+          this.player.facingLeft = mx < 0;
+          this.player.walkAnim += dt * 2.2;
+
+          if (Date.now() - this.lastStepTime > 320) {
+            Sound.playStep();
+            this.lastStepTime = Date.now();
+          }
+
+          if (this.isMultiplayer) {
+            Network.broadcast({
+              type: 'POS', id: this.player.id, x: this.player.x, y: this.player.y,
+              facing: this.player.facingLeft, anim: this.player.walkAnim
+            });
+          }
+        }
+
+        this.camera.x += (this.player.x - this.camera.x) * 0.1;
+        this.camera.y += (this.player.y - this.camera.y) * 0.1;
+
+        if (this.player.isImpostor && this.killCooldown > 0) {
+          this.killCooldown = Math.max(0, this.killCooldown - dt);
+        }
+        this.updateButtons();
+      }
+
+      updateButtons() {
+        const killBtn = document.getElementById('btn-kill');
+        const useBtn = document.getElementById('btn-use');
+        const repBtn = document.getElementById('btn-report');
+        const circle = document.getElementById('kill-cooldown-circle');
+
+        let nearestTarget = null;
+        let minDist = 110;
+        const targets = this.isMultiplayer ? this.remotePlayers : this.bots;
+
+        for (const t of targets) {
+          if (t.isDead) continue;
+          const d = Math.hypot(t.x - this.player.x, t.y - this.player.y);
+          if (d < minDist) { minDist = d; nearestTarget = t; }
+        }
+        this.closestTarget = nearestTarget;
+
+        if (this.player.isImpostor) {
+          circle.style.strokeDashoffset = (242 * (this.killCooldown / 15)).toString();
+          if (this.killCooldown <= 0 && this.closestTarget) killBtn.classList.remove('disabled');
+          else killBtn.classList.add('disabled');
+        }
+
+        let foundCorpse = null;
+        for (const c of this.corpses) {
+          if (Math.hypot(c.x - this.player.x, c.y - this.player.y) < 130) { foundCorpse = c; break; }
+        }
+        this.nearCorpse = foundCorpse;
+        if (foundCorpse) repBtn.classList.remove('disabled');
+        else repBtn.classList.add('disabled');
+
+        let nearT = null;
+        if (!this.player.isImpostor) {
+          for (const tk of this.tasks) {
+            if (!tk.done && Math.hypot(tk.x - this.player.x, tk.y - this.player.y) < tk.radius + 15) {
+              nearT = tk; break;
+            }
+          }
+        }
+        this.currentNearTask = nearT;
+        if (nearT) useBtn.classList.remove('disabled');
+        else useBtn.classList.add('disabled');
+      }
+
+      onKill() {
+        if (!this.player.isImpostor || this.killCooldown > 0 || !this.closestTarget) return;
+        Sound.playKill();
+        this.closestTarget.isDead = true;
+        this.corpses.push({ x: this.closestTarget.x, y: this.closestTarget.y, color: this.closestTarget.color });
+        this.killCooldown = 15;
+
+        if (this.isMultiplayer) {
+          Network.broadcast({ type: 'KILL', targetId: this.closestTarget.id, x: this.closestTarget.x, y: this.closestTarget.y });
+        }
+        this.checkWinLoss();
+      }
+
+      onReport() {
+        if (!this.nearCorpse) return;
+        this.startMeeting('Body reported!');
+        if (this.isMultiplayer) Network.broadcast({ type: 'MEETING' });
+      }
+
+      onUse() {
+        if (!this.currentNearTask) return;
+        this.openMiniGame(this.currentNearTask);
+                }
+            /* ==========================================================================
+         MINI GAMES & APP FLOW
+         ========================================================================== */
+      openMiniGame(task) {
+        this.state = 'TASK';
+        this.activeTask = task;
+        if (task.type === 'wires') this.runWireTask();
+        else this.runDownloadTask();
+      }
+
+      closeMiniGame() {
+        document.getElementById('modal-wires').style.display = 'none';
+        document.getElementById('modal-download').style.display = 'none';
+        this.state = 'PLAYING';
+      }
+
+      runWireTask() {
+        const modal = document.getElementById('modal-wires');
+        modal.style.display = 'flex';
+        const leftCol = document.getElementById('wires-left');
+        const rightCol = document.getElementById('wires-right');
+        const cvs = document.getElementById('wires-canvas');
+        const ctx = cvs.getContext('2d');
+        leftCol.innerHTML = ''; rightCol.innerHTML = '';
+        cvs.width = cvs.parentElement.clientWidth; cvs.height = cvs.parentElement.clientHeight;
+
+        const colors = ['#ef4444', '#3b82f6', '#eab308', '#ec4899'];
+        const left = [...colors].sort(() => Math.random() - 0.5);
+        const right = [...colors].sort(() => Math.random() - 0.5);
+        const links = {};
+        let drag = null;
+
+        left.forEach((col, i) => {
+          const d = document.createElement('div');
+          d.className = 'wire-terminal'; d.style.background = col;
+          d.onpointerdown = (e) => {
+            drag = { col, idx: i, x: d.offsetLeft + 38, y: d.offsetTop + 19, cx: e.offsetX, cy: e.offsetY };
+          };
+          leftCol.appendChild(d);
+        });
+
+        right.forEach((col, i) => {
+          const d = document.createElement('div');
+          d.className = 'wire-terminal'; d.style.background = col;
+          rightCol.appendChild(d);
+        });
+
+        const draw = () => {
+          ctx.clearRect(0, 0, cvs.width, cvs.height);
+          for (const [l, r] of Object.entries(links)) {
+            const lt = leftCol.children[l], rt = rightCol.children[r];
+            ctx.strokeStyle = lt.style.background; ctx.lineWidth = 8; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(lt.offsetLeft + 38, lt.offsetTop + 19);
+            ctx.lineTo(rt.offsetLeft, rt.offsetTop + 19);
+            ctx.stroke();
+          }
+          if (drag) {
+            ctx.strokeStyle = drag.col; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(drag.x, drag.y); ctx.lineTo(drag.cx, drag.cy); ctx.stroke();
+          }
+        };
+
+        window.onpointermove = (e) => {
+          if (!drag) return;
+          const rect = cvs.getBoundingClientRect();
+          drag.cx = e.clientX - rect.left; drag.cy = e.clientY - rect.top;
+          draw();
+        };
+
+        window.onpointerup = (e) => {
+          if (!drag) return;
+          const rect = cvs.getBoundingClientRect();
+          const dropX = e.clientX - rect.left, dropY = e.clientY - rect.top;
+          for (let i = 0; i < rightCol.children.length; i++) {
+            const rt = rightCol.children[i];
+            if (dropX >= rt.offsetLeft - 25 && dropY >= rt.offsetTop - 10 && dropY <= rt.offsetTop + 48) {
+              if (rt.style.background === drag.col) { links[drag.idx] = i; Sound.playStep(); }
+              break;
+            }
+          }
+          drag = null; draw();
+          if (Object.keys(links).length === 4) {
+            Sound.playSuccess();
+            setTimeout(() => { this.completeTask(this.activeTask); this.closeMiniGame(); }, 400);
+          }
+        };
+        draw();
+      }
+
+      runDownloadTask() {
+        const modal = document.getElementById('modal-download');
+        modal.style.display = 'flex';
+        document.getElementById('download-progress').style.width = '0%';
+        document.getElementById('download-status').textContent = 'Speed: 0.00 KB/s';
+        document.getElementById('btn-start-download').style.display = 'block';
+      }
+
+      startDownloadTask() {
+        document.getElementById('btn-start-download').style.display = 'none';
+        let p = 0;
+        const fill = document.getElementById('download-progress');
+        const txt = document.getElementById('download-status');
+        const iv = setInterval(() => {
+          p += 3; fill.style.width = p + '%';
+          txt.textContent = `Transferring... ${Math.min(100, Math.floor(p))}%`;
+          if (p >= 100) {
+            clearInterval(iv); Sound.playSuccess();
+            setTimeout(() => { this.completeTask(this.activeTask); this.closeMiniGame(); }, 400);
+          }
+        }, 80);
+      }
+
+      completeTask(t) {
+        if (!t || t.done) return;
+        t.done = true; this.tasksCompleted++;
+        if (this.isMultiplayer) Network.broadcast({ type: 'TASK_DONE' });
+        this.checkWinLoss();
+      }
+
+      startMeeting() {
+        this.state = 'MEETING'; Sound.playAlarm();
+        document.getElementById('modal-meeting').style.display = 'flex';
+        const rost = document.getElementById('meeting-roster');
+        rost.innerHTML = '';
+        const all = [this.player, ...(this.isMultiplayer ? this.remotePlayers : this.bots)];
+        all.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'vote-card' + (p.isDead ? ' dead' : '');
+          card.innerHTML = `<strong>${p.name}</strong>`;
+          if (!p.isDead) card.onclick = () => this.castVote(p.id);
+          rost.appendChild(card);
+        });
+        let sec = 15;
+        const timer = document.getElementById('meeting-timer');
+        timer.textContent = sec + 's';
+        this.meetIv = setInterval(() => {
+          sec--; timer.textContent = sec + 's';
+          if (sec <= 0) { clearInterval(this.meetIv); this.castVote(null); }
+        }, 1000);
+      }
+
+      castVote(targetId) {
+        clearInterval(this.meetIv);
+        document.getElementById('modal-meeting').style.display = 'none';
+        this.state = 'PLAYING';
+      }
+
+      checkWinLoss() {
+        if (this.tasksCompleted >= this.tasksTotal) {
+          alert('CREWMATES WIN! Maintenance finished.');
+          window.location.reload();
+        }
+      }
+
+      handleNetworkMessage(msg) {
+        if (msg.type === 'POS') {
+          let rem = this.remotePlayers.find(p => p.id === msg.id);
+          if (!rem) {
+            rem = { id: msg.id, name: 'Peer', color: PLAYER_COLORS[1], x: msg.x, y: msg.y, size: 32, facingLeft: false, walkAnim: 0, isDead: false };
+            this.remotePlayers.push(rem);
+          }
+          rem.x = msg.x; rem.y = msg.y; rem.facingLeft = msg.facing; rem.walkAnim = msg.anim;
+        } else if (msg.type === 'KILL') {
+          if (this.player.id === msg.targetId) this.player.isDead = true;
+          this.corpses.push({ x: msg.x, y: msg.y, color: PLAYER_COLORS[1] });
+        } else if (msg.type === 'MEETING') {
+          this.startMeeting();
+        } else if (msg.type === 'TASK_DONE') {
+          this.tasksCompleted++;
+          this.checkWinLoss();
+        } else if (msg.type === 'START') {
+          App.executeMultiLaunch();
+        }
+      }
+
+      render() {
+        this.ctx.clearRect(0, 0, this.viewW, this.viewH);
+        if (this.state !== 'MENU' && this.player) {
+          this.ctx.save();
+          this.ctx.translate(Math.floor(this.viewW / 2 - this.camera.x), Math.floor(this.viewH / 2 - this.camera.y));
+
+          for (const h of HALLWAYS) {
+            this.ctx.fillStyle = '#0f172a'; this.ctx.fillRect(h.x, h.y, h.w, h.h);
+            this.ctx.strokeStyle = '#334155'; this.ctx.lineWidth = 4; this.ctx.strokeRect(h.x, h.y, h.w, h.h);
+          }
+          for (const r of ROOMS) {
+            this.ctx.fillStyle = r.color; this.ctx.fillRect(r.x, r.y, r.w, r.h);
+            this.ctx.strokeStyle = '#475569'; this.ctx.lineWidth = 6; this.ctx.strokeRect(r.x, r.y, r.w, r.h);
+            this.ctx.fillStyle = 'rgba(255,255,255,0.06)'; this.ctx.font = '900 32px sans-serif';
+            this.ctx.fillText(r.name.toUpperCase(), r.x + 30, r.y + 60);
+          }
+          for (const w of SOLID_WALLS) {
+            this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(w.x, w.y, w.w, w.h);
+          }
+          for (const t of this.tasks) {
+            this.ctx.fillStyle = t.done ? '#10b981' : '#3b82f6';
+            this.ctx.beginPath(); this.ctx.roundRect(t.x - 16, t.y - 16, 32, 32, [6]); this.ctx.fill();
+          }
+          for (const c of this.corpses) {
+            ProceduralGraphics.drawAstronaut(this.ctx, c.x, c.y, 32, c.color, false, 0, true);
+          }
+
+          const entities = [...this.remotePlayers, ...this.bots];
+          if (!this.player.isDead) entities.push(this.player);
+          entities.sort((a,b) => a.y - b.y);
+
+          for (const e of entities) {
+            ProceduralGraphics.drawAstronaut(this.ctx, e.x, e.y, e.size, e.color, e.facingLeft, e.walkAnim, e.isDead);
+            this.ctx.fillStyle = '#fff'; this.ctx.font = 'bold 12px sans-serif'; this.ctx.textAlign = 'center';
+            this.ctx.fillText(e.name, e.x, e.y - 32);
+          }
+          this.ctx.restore();
+
+          const grad = this.ctx.createRadialGradient(this.viewW/2, this.viewH/2, 120, this.viewW/2, this.viewH/2, this.viewW * 0.7);
+          grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(2,4,10,0.85)');
+          this.ctx.fillStyle = grad; this.ctx.fillRect(0, 0, this.viewW, this.viewH);
+
+          this.ctx.fillStyle = '#111827'; this.ctx.fillRect(20, 20, 260, 22);
+          this.ctx.fillStyle = '#22c55e'; this.ctx.fillRect(22, 22, (256) * (this.tasksCompleted / this.tasksTotal), 18);
+          this.ctx.fillStyle = '#fff'; this.ctx.font = 'bold 12px sans-serif'; this.ctx.textAlign = 'left';
+          this.ctx.fillText(`TASKS: ${this.tasksCompleted} / ${this.tasksTotal}`, 20, 58);
+
+          if (this.joystick.active) {
+            this.ctx.strokeStyle = 'rgba(255,255,255,0.4)'; this.ctx.lineWidth = 3;
+            this.ctx.beginPath(); this.ctx.arc(this.joystick.sx, this.joystick.sy, this.joystick.rad, 0, Math.PI * 2); this.ctx.stroke();
+            this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            this.ctx.beginPath(); this.ctx.arc(this.joystick.sx + this.joystick.vx * this.joystick.rad, this.joystick.sy + this.joystick.vy * this.joystick.rad, 24, 0, Math.PI * 2); this.ctx.fill();
+          }
+        }
+      }
+
+      tick(timestamp) {
+        if (!this.lastTime) this.lastTime = timestamp;
+        const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+        this.lastTime = timestamp;
+
+        if (this.state === 'PLAYING') {
+          this.updatePlayer(dt);
+          if (!this.isMultiplayer) {
+            for (const b of this.bots) {
+              if (b.isDead) continue;
+              const dx = b.target.x - b.x, dy = b.target.y - b.y, d = Math.hypot(dx, dy);
+              if (d < 20) b.target = this.getRandomMapPos();
+              else {
+                b.x += (dx / d) * b.speed; b.y += (dy / d) * b.speed;
+                b.facingLeft = dx < 0; b.walkAnim += dt * 1.5;
+              }
+            }
+          }
+        }
+        this.render();
+        requestAnimationFrame((t) => this.tick(t));
+      }
+    }
+    const Game = new GameEngine();
+
+    /* ==========================================================================
+       APP LAUNCHER (URL PARAM AUTO-JOIN & 4-LETTER CODE)
+       ========================================================================== */
+    const App = {
+      showScreen(id) {
+        document.querySelectorAll('.screen-overlay').forEach(s => s.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+        if (id === 'screen-host') {
+          Network.hostRoom((code) => {
+            document.getElementById('host-code-display').textContent = code;
+          });
+        }
+      },
+      startSinglePlayer() {
+        Sound.init();
+        const nick = document.getElementById('player-nickname').value || 'CREWMATE';
+        document.getElementById('screen-home').classList.add('hidden');
+        Game.startSinglePlayer(nick);
+      },
+      copyInviteLink() {
+        const url = `${window.location.origin}${window.location.pathname}?room=${Network.roomCode}`;
+        navigator.clipboard.writeText(url);
+        alert('Invite Link copied! Your friend can click it to join directly.');
+      },
+      joinWithCode() {
+        const code = document.getElementById('join-code-input').value.trim();
+        if (code.length < 4) return alert('Enter a 4-letter room code!');
+        Network.joinRoom(code);
+      },
+      onConnected() {
+        this.showScreen('screen-lobby');
+        if (!Network.isHost) document.getElementById('btn-start-multi').style.display = 'none';
+      },
+      launchMultiplayerGame() {
+        Network.broadcast({ type: 'START' });
+        this.executeMultiLaunch();
+      },
+      executeMultiLaunch() {
+        Sound.init();
+        document.querySelectorAll('.screen-overlay').forEach(s => s.classList.add('hidden'));
+        Game.isMultiplayer = true;
+        const nick = document.getElementById('player-nickname').value || 'CREWMATE';
+        Game.setupLocalPlayer(nick, Network.isHost ? PLAYER_COLORS[0] : PLAYER_COLORS[1], Network.isHost);
+        Game.showRoleSplash();
+      }
+    };
+
+    window.onload = () => {
+      // Auto-join via URL parameter if clicked from invite link (?room=ABCD)
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      if (roomParam) {
+        App.showScreen('screen-join');
+        document.getElementById('join-code-input').value = roomParam;
+        Network.joinRoom(roomParam);
+      }
+      requestAnimationFrame((t) => Game.tick(t));
+    };
+  </script>
+</body>
+</html>
